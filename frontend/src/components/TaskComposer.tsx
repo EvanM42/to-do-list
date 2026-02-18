@@ -23,7 +23,9 @@ export function TaskComposer({ defaultListId }: Props) {
   const [priority, setPriority] = useState<Priority>('none')
   const [tag, setTag] = useState('')
   const [tags, setTags] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const dateInputRef = useRef<HTMLInputElement>(null)
   const createTask = useCreateTask()
   const { activeView } = useUiStore()
 
@@ -38,23 +40,38 @@ export function TaskComposer({ defaultListId }: Props) {
     setPriority('none')
     setTags([])
     setTag('')
+    setError(null)
     setOpen(false)
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!title.trim()) return
+    setError(null)
 
-    await createTask.mutateAsync({
-      title: title.trim(),
-      notes: notes.trim() || undefined,
-      list_id: defaultListId ?? null,
-      priority,
-      due_at: dueAt ? new Date(dueAt).toISOString() : null,
-      tags,
-    })
+    try {
+      await createTask.mutateAsync({
+        title: title.trim(),
+        notes: notes.trim() || undefined,
+        list_id: defaultListId ?? null,
+        priority,
+        due_at: dueAt ? new Date(dueAt).toISOString() : null,
+        tags,
+      })
+      reset()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create task')
+    }
+  }
 
-    reset()
+  function openDatePicker() {
+    const input = dateInputRef.current
+    if (!input) return
+    if (typeof (input as HTMLInputElement & { showPicker?: () => void }).showPicker === 'function') {
+      ;(input as HTMLInputElement & { showPicker: () => void }).showPicker()
+    } else {
+      input.click()
+    }
   }
 
   function addTag() {
@@ -100,6 +117,11 @@ export function TaskComposer({ defaultListId }: Props) {
           className="w-full text-sm text-gray-600 placeholder-gray-400 focus:outline-none resize-none"
         />
 
+        {/* Error */}
+        {error && (
+          <p className="text-xs text-red-500">{error}</p>
+        )}
+
         {/* Tags */}
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
@@ -125,16 +147,24 @@ export function TaskComposer({ defaultListId }: Props) {
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-t border-gray-100">
         {/* Due date */}
-        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer hover:text-apple-blue transition-colors">
-          <Calendar className="w-3.5 h-3.5" />
+        <div className="relative">
+          <button
+            type="button"
+            onClick={openDatePicker}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-apple-blue transition-colors"
+          >
+            <Calendar className="w-3.5 h-3.5" />
+            {dueAt ? new Date(dueAt).toLocaleDateString() : 'Due date'}
+          </button>
           <input
+            ref={dateInputRef}
             type="datetime-local"
             value={dueAt}
             onChange={(e) => setDueAt(e.target.value)}
-            className="w-0 opacity-0 absolute"
+            className="absolute inset-0 opacity-0 w-full cursor-pointer"
+            tabIndex={-1}
           />
-          {dueAt ? new Date(dueAt).toLocaleDateString() : 'Due date'}
-        </label>
+        </div>
 
         {/* Priority picker */}
         <div className="relative group">
@@ -188,7 +218,7 @@ export function TaskComposer({ defaultListId }: Props) {
           disabled={!title.trim() || createTask.isPending}
           className="px-3 py-1 bg-apple-blue text-white text-xs font-semibold rounded-lg disabled:opacity-50 hover:bg-blue-600 transition-colors"
         >
-          Add
+          {createTask.isPending ? 'Adding…' : 'Add'}
         </button>
       </div>
     </form>
