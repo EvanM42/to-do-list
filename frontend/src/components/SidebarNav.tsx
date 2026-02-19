@@ -123,7 +123,9 @@ export function SidebarNav() {
                 type="text"
                 value={newListTitle}
                 onChange={(e) => setNewListTitle(e.target.value)}
-                onKeyDown={(e) => e.key === 'Escape' && setAddingList(false)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') { setAddingList(false); setNewListTitle('') }
+                }}
                 placeholder="List name…"
                 className="w-full px-2 py-1.5 rounded-lg text-sm border border-apple-blue/50 focus:outline-none focus:ring-2 focus:ring-apple-blue/30 bg-white"
               />

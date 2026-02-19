@@ -37,6 +37,8 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
   const [tag, setTag] = useState('')
   const [tags, setTags] = useState<string[]>(task.task_tags.map((t) => t.tag))
   const [dirty, setDirty] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Reset when task changes
   useEffect(() => {
@@ -46,21 +48,32 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
     setDueAt(task.due_at ? new Date(task.due_at).toISOString().slice(0, 16) : '')
     setTags(task.task_tags.map((t) => t.tag))
     setDirty(false)
+    setSaveError(null)
   }, [task.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function save() {
-    if (!dirty) return
-    await updateTask.mutateAsync({
-      id: task.id,
-      input: {
-        title: title.trim() || task.title,
-        notes: notes.trim() || null,
-        priority,
-        due_at: dueAt ? new Date(dueAt).toISOString() : null,
-        tags,
-      },
-    })
-    setDirty(false)
+    // Guard: skip if nothing changed or a save is already in flight
+    // (blur + Save button click fire simultaneously when clicking Save)
+    if (!dirty || saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await updateTask.mutateAsync({
+        id: task.id,
+        input: {
+          title: title.trim() || task.title,
+          notes: notes.trim() || null,
+          priority,
+          due_at: dueAt ? new Date(dueAt).toISOString() : null,
+          tags,
+        },
+      })
+      setDirty(false)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function handleBlur() {
@@ -88,6 +101,7 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 sticky top-0 bg-white z-10">
         <h2 className="text-sm font-semibold text-gray-700">Details</h2>
         <button
+          type="button"
           onClick={onClose}
           className="p-1 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors"
           aria-label="Close"
@@ -137,6 +151,7 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
           />
           {dueAt && (
             <button
+              type="button"
               onClick={() => { setDueAt(''); setDirty(true) }}
               className="mt-1 text-xs text-red-400 hover:text-red-600 transition-colors"
             >
@@ -155,6 +170,7 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
             {PRIORITIES.map((p) => (
               <button
                 key={p}
+                type="button"
                 onClick={() => { setPriority(p); setDirty(true) }}
                 className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-all ${
                   priority === p
@@ -182,6 +198,7 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
               >
                 {t}
                 <button
+                  type="button"
                   onClick={() => { setTags((p) => p.filter((x) => x !== t)); setDirty(true) }}
                   className="text-gray-400 hover:text-red-500 transition-colors"
                 >
@@ -214,23 +231,30 @@ export function TaskDetailDrawer({ task, onClose }: Props) {
       </div>
 
       {/* Save / Delete */}
-      <div className="p-4 border-t border-gray-100 flex gap-2">
-        {dirty && (
-          <button
-            onClick={save}
-            disabled={updateTask.isPending}
-            className="flex-1 py-2 bg-apple-blue text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-60"
-          >
-            {updateTask.isPending ? 'Saving…' : 'Save'}
-          </button>
+      <div className="p-4 border-t border-gray-100 flex flex-col gap-2">
+        {saveError && (
+          <p className="text-xs text-red-500 font-medium">{saveError}</p>
         )}
-        <button
-          onClick={handleDelete}
-          className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-          Delete
-        </button>
+        <div className="flex gap-2">
+          {dirty && (
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="flex-1 py-2 bg-apple-blue text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-60"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleDelete}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+        </div>
       </div>
     </aside>
   )

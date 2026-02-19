@@ -21,11 +21,13 @@ export function TaskComposer({ defaultListId }: Props) {
   const [notes, setNotes] = useState('')
   const [dueAt, setDueAt] = useState('')
   const [priority, setPriority] = useState<Priority>('none')
+  const [priorityOpen, setPriorityOpen] = useState(false)
   const [tag, setTag] = useState('')
   const [tags, setTags] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const dateInputRef = useRef<HTMLInputElement>(null)
+  const priorityRef = useRef<HTMLDivElement>(null)
   const createTask = useCreateTask()
   const { activeView } = useUiStore()
 
@@ -33,11 +35,24 @@ export function TaskComposer({ defaultListId }: Props) {
     if (open) inputRef.current?.focus()
   }, [open])
 
+  // Close priority dropdown when clicking outside
+  useEffect(() => {
+    if (!priorityOpen) return
+    function handleOutside(e: MouseEvent) {
+      if (priorityRef.current && !priorityRef.current.contains(e.target as Node)) {
+        setPriorityOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [priorityOpen])
+
   function reset() {
     setTitle('')
     setNotes('')
     setDueAt('')
     setPriority('none')
+    setPriorityOpen(false)
     setTags([])
     setTag('')
     setError(null)
@@ -67,9 +82,14 @@ export function TaskComposer({ defaultListId }: Props) {
   function openDatePicker() {
     const input = dateInputRef.current
     if (!input) return
-    if (typeof (input as HTMLInputElement & { showPicker?: () => void }).showPicker === 'function') {
-      ;(input as HTMLInputElement & { showPicker: () => void }).showPicker()
-    } else {
+    try {
+      if (typeof (input as HTMLInputElement & { showPicker?: () => void }).showPicker === 'function') {
+        ;(input as HTMLInputElement & { showPicker: () => void }).showPicker()
+      } else {
+        input.click()
+      }
+    } catch {
+      // showPicker() can throw in some browser contexts; fall back to click
       input.click()
     }
   }
@@ -94,9 +114,10 @@ export function TaskComposer({ defaultListId }: Props) {
   }
 
   return (
+    // No overflow-hidden — it clips the priority dropdown that opens upward
     <form
       onSubmit={handleSubmit}
-      className="rounded-xl border border-apple-blue/40 bg-white shadow-card overflow-hidden"
+      className="rounded-xl border border-apple-blue/40 bg-white shadow-card"
     >
       <div className="p-4 space-y-3">
         <input
@@ -119,7 +140,7 @@ export function TaskComposer({ defaultListId }: Props) {
 
         {/* Error */}
         {error && (
-          <p className="text-xs text-red-500">{error}</p>
+          <p className="text-xs text-red-500 font-medium">{error}</p>
         )}
 
         {/* Tags */}
@@ -144,49 +165,64 @@ export function TaskComposer({ defaultListId }: Props) {
         )}
       </div>
 
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-t border-gray-100">
-        {/* Due date */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={openDatePicker}
-            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-apple-blue transition-colors"
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            {dueAt ? new Date(dueAt).toLocaleDateString() : 'Due date'}
-          </button>
-          <input
-            ref={dateInputRef}
-            type="datetime-local"
-            value={dueAt}
-            onChange={(e) => setDueAt(e.target.value)}
-            className="absolute inset-0 opacity-0 w-full cursor-pointer"
-            tabIndex={-1}
-          />
+      {/* Toolbar — rounded-b-xl keeps corners clipped since we removed overflow-hidden from form */}
+      <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-t border-gray-100 rounded-b-xl">
+        {/* Due date — pointer-events-none on the hidden input so the button's onClick fires */}
+        <div className="flex items-center gap-1">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={openDatePicker}
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-apple-blue transition-colors"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              {dueAt ? new Date(dueAt).toLocaleDateString() : 'Due date'}
+            </button>
+            <input
+              ref={dateInputRef}
+              type="datetime-local"
+              value={dueAt}
+              onChange={(e) => setDueAt(e.target.value)}
+              className="absolute inset-0 opacity-0 w-full pointer-events-none"
+              tabIndex={-1}
+            />
+          </div>
+          {dueAt && (
+            <button
+              type="button"
+              onClick={() => setDueAt('')}
+              aria-label="Clear due date"
+              className="text-gray-400 hover:text-red-500 transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
 
-        {/* Priority picker */}
-        <div className="relative group">
+        {/* Priority picker — state-based toggle, no CSS hover tricks */}
+        <div ref={priorityRef} className="relative">
           <button
             type="button"
+            onClick={() => setPriorityOpen((o) => !o)}
             className={`flex items-center gap-1.5 text-xs ${PRIORITY_LABELS[priority].color} hover:opacity-80 transition-opacity`}
           >
             <Flag className="w-3.5 h-3.5" />
             {priority !== 'none' ? PRIORITY_LABELS[priority].label : 'Priority'}
           </button>
-          <div className="absolute bottom-full left-0 mb-1 hidden group-hover:block bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-10 min-w-28">
-            {(Object.keys(PRIORITY_LABELS) as Priority[]).map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPriority(p)}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${PRIORITY_LABELS[p].color} ${priority === p ? 'font-semibold' : ''}`}
-              >
-                {PRIORITY_LABELS[p].label}
-              </button>
-            ))}
-          </div>
+          {priorityOpen && (
+            <div className="absolute bottom-full left-0 mb-1 bg-white rounded-lg shadow-lg border border-gray-100 py-1 z-20 min-w-28">
+              {(Object.keys(PRIORITY_LABELS) as Priority[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => { setPriority(p); setPriorityOpen(false) }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 ${PRIORITY_LABELS[p].color} ${priority === p ? 'font-semibold' : ''}`}
+                >
+                  {PRIORITY_LABELS[p].label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Tag input */}
